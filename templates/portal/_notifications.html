@@ -1,0 +1,1 @@
+{% load i18n %}{% for n in notifications %}<div class="p-3 border-bottom"><strong>{{ n.title }}</strong>{% if n.message %}<small class="d-block text-secondary">{{ n.message }}</small>{% endif %}</div>{% empty %}<div class="p-4 text-secondary">{% trans 'No notifications.' %}</div>{% endfor %}

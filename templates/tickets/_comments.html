@@ -1,0 +1,1 @@
+{% for c in ticket.comments.all %}<div class="p-3 border-bottom"><strong>{{ c.author|default:'System' }}</strong><div>{{ c.body_html|safe }}</div></div>{% empty %}<div class="p-4 text-secondary">No comments yet.</div>{% endfor %}
