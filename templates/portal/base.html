@@ -1,1 +1,51 @@
-{% extends 'base.html' %}{% load i18n %}{% block body %}<div class="min-vh-100 d-flex"><aside class="bg-body border-end p-3 d-none d-lg-flex flex-column" style="width:260px"><a href="{% url 'portal:dashboard' %}" class="h4 fw-bold text-primary text-decoration-none mb-4">Alyusr</a><nav class="nav nav-pills flex-column gap-1"><a class="nav-link" href="{% url 'portal:dashboard' %}">{% trans 'Dashboard' %}</a><a class="nav-link" href="{% url 'tickets:list' %}">{% trans 'Tickets' %}</a><a class="nav-link" href="{% url 'quotations:list' %}">{% trans 'Quotations' %}</a><a class="nav-link" href="{% url 'knowledge:list' %}">{% trans 'Knowledge Base' %}</a><a class="nav-link" href="{% url 'portal:client_center' %}">{% trans 'Client Center' %}</a>{% if user.is_staff %}<a class="nav-link" href="{% url 'scheduler:list' %}">{% trans 'Scheduled Tasks' %}</a><a class="nav-link" href="{% url 'admin:index' %}">{% trans 'Administration' %}</a>{% endif %}</nav></aside><div class="flex-grow-1"><header class="navbar bg-body border-bottom px-3"><span class="fw-semibold">{% block page_title %}{% trans 'Portal' %}{% endblock %}</span><a class="btn btn-primary" href="{% url 'tickets:create' %}">{% trans 'New Ticket' %}</a></header><main class="p-3 p-lg-4">{% block portal_content %}{% endblock %}</main></div></div>{% endblock %}
+{% extends 'base.html' %}
+{% load i18n %}
+{% block extra_head %}
+<style>
+  .portal-shell{min-height:100vh;background:var(--alyusr-soft)}
+  .portal-sidebar{width:272px;min-width:272px;background:var(--bs-body-bg);border-inline-end:1px solid var(--alyusr-border);transition:width .22s ease,min-width .22s ease;position:sticky;top:0;height:100vh;z-index:1030}
+  .portal-sidebar.collapsed{width:82px;min-width:82px}.portal-sidebar .side-label,.portal-sidebar .brand-label,.portal-sidebar .side-section{white-space:nowrap;overflow:hidden;transition:opacity .15s ease}.portal-sidebar.collapsed .side-label,.portal-sidebar.collapsed .brand-label,.portal-sidebar.collapsed .side-section{opacity:0;width:0;display:none}.portal-sidebar .nav-link{display:flex;align-items:center;gap:.8rem;border-radius:.8rem;padding:.72rem .8rem;color:var(--bs-body-color)}.portal-sidebar .nav-link:hover{background:var(--alyusr-soft);color:var(--alyusr-primary)}.portal-sidebar .nav-link i{font-size:1.1rem;min-width:24px;text-align:center}.portal-sidebar.collapsed .nav-link{justify-content:center}.portal-main{min-width:0}.portal-topbar{min-height:68px;background:color-mix(in srgb,var(--bs-body-bg) 94%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--alyusr-border);position:sticky;top:0;z-index:1020}.portal-card{border:1px solid var(--alyusr-border);border-radius:1rem;background:var(--bs-body-bg);box-shadow:var(--alyusr-shadow)}
+  @media(max-width:991.98px){.portal-sidebar{display:none}.portal-content{padding:1rem!important}}
+</style>
+{% endblock %}
+{% block body %}
+<div class="portal-shell d-flex">
+  <aside class="portal-sidebar d-none d-lg-flex flex-column p-3" id="portalSidebar">
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-4">
+      <a href="{% url 'portal:dashboard' %}" class="d-flex align-items-center gap-2 fw-bold text-primary text-decoration-none overflow-hidden"><span class="icon-box flex-shrink-0"><i class="bi bi-shield-check"></i></span><span class="brand-label h5 mb-0">Alyusr</span></a>
+      <button class="btn btn-sm btn-outline-secondary flex-shrink-0" type="button" id="sidebarToggle" aria-label="Toggle sidebar"><i class="bi bi-layout-sidebar-inset"></i></button>
+    </div>
+    <div class="side-section small text-uppercase text-secondary fw-bold px-2 mb-2">{% trans 'Operations' %}</div>
+    <nav class="nav flex-column gap-1">
+      <a class="nav-link" href="{% url 'portal:dashboard' %}"><i class="bi bi-grid-1x2"></i><span class="side-label">{% trans 'Dashboard' %}</span></a>
+      <a class="nav-link" href="{% url 'tickets:list' %}"><i class="bi bi-ticket-detailed"></i><span class="side-label">{% trans 'Tickets' %}</span></a>
+      <a class="nav-link" href="{% url 'quotations:list' %}"><i class="bi bi-file-earmark-bar-graph"></i><span class="side-label">{% trans 'Quotations' %}</span></a>
+      {% if user.is_staff %}<a class="nav-link" href="{% url 'scheduler:list' %}"><i class="bi bi-calendar2-check"></i><span class="side-label">{% trans 'Tasks & Automation' %}</span></a>{% endif %}
+    </nav>
+    <div class="side-section small text-uppercase text-secondary fw-bold px-2 mt-4 mb-2">{% trans 'Client Service' %}</div>
+    <nav class="nav flex-column gap-1">
+      <a class="nav-link" href="{% url 'knowledge:list' %}"><i class="bi bi-journal-text"></i><span class="side-label">{% trans 'Knowledge Base' %}</span></a>
+      <a class="nav-link" href="{% url 'portal:client_center' %}"><i class="bi bi-person-vcard"></i><span class="side-label">{% trans 'Client Center' %}</span></a>
+      {% if user.is_staff %}<a class="nav-link" href="{% url 'admin:index' %}"><i class="bi bi-sliders"></i><span class="side-label">{% trans 'Administration' %}</span></a>{% endif %}
+    </nav>
+    <div class="mt-auto border-top pt-3"><a class="nav-link" href="{% url 'account_logout' %}"><i class="bi bi-box-arrow-right"></i><span class="side-label">{% trans 'Sign out' %}</span></a></div>
+  </aside>
+  <div class="portal-main flex-grow-1">
+    <header class="portal-topbar navbar px-3 px-lg-4">
+      <div class="d-flex align-items-center gap-3"><button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobilePortalNav"><i class="bi bi-list"></i></button><div><div class="fw-bold">{% block page_title %}{% trans 'Portal' %}{% endblock %}</div><small class="text-secondary d-none d-md-block">{% trans 'Alyusr enterprise service workspace' %}</small></div></div>
+      <div class="d-flex align-items-center gap-2 ms-auto">
+        <button class="btn btn-outline-secondary" type="button" hx-get="{% url 'portal:notification_feed' %}" hx-target="#notificationBody" data-bs-toggle="offcanvas" data-bs-target="#notificationPanel" aria-label="Notifications"><i class="bi bi-bell"></i></button>
+        <button class="btn btn-outline-secondary d-none d-sm-inline-block" type="button" onclick="toggleAlyusrTheme()"><i class="bi bi-circle-half"></i></button>
+        <form action="{% url 'set_language' %}" method="post" class="d-none d-sm-inline">{% csrf_token %}<input name="next" type="hidden" value="{{ request.get_full_path }}"><input name="language" type="hidden" value="{% if LANGUAGE_CODE == 'ar' %}en{% else %}ar{% endif %}"><button class="btn btn-outline-secondary" type="submit">{% if LANGUAGE_CODE == 'ar' %}EN{% else %}ع{% endif %}</button></form>
+        <a class="btn btn-primary" href="{% url 'tickets:create' %}"><i class="bi bi-plus-lg me-1"></i><span class="d-none d-sm-inline">{% trans 'New Ticket' %}</span></a>
+      </div>
+    </header>
+    <main class="portal-content p-3 p-lg-4">{% block portal_content %}{% endblock %}</main>
+  </div>
+</div>
+<div class="offcanvas offcanvas-start" tabindex="-1" id="mobilePortalNav"><div class="offcanvas-header"><h5 class="offcanvas-title text-primary">Alyusr</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body"><nav class="nav nav-pills flex-column gap-2"><a class="nav-link" href="{% url 'portal:dashboard' %}"><i class="bi bi-grid me-2"></i>{% trans 'Dashboard' %}</a><a class="nav-link" href="{% url 'tickets:list' %}"><i class="bi bi-ticket-detailed me-2"></i>{% trans 'Tickets' %}</a><a class="nav-link" href="{% url 'quotations:list' %}"><i class="bi bi-file-earmark-bar-graph me-2"></i>{% trans 'Quotations' %}</a>{% if user.is_staff %}<a class="nav-link" href="{% url 'scheduler:list' %}"><i class="bi bi-calendar2-check me-2"></i>{% trans 'Tasks & Automation' %}</a>{% endif %}<a class="nav-link" href="{% url 'knowledge:list' %}"><i class="bi bi-journal-text me-2"></i>{% trans 'Knowledge Base' %}</a></nav></div></div>
+<div class="offcanvas offcanvas-end" tabindex="-1" id="notificationPanel"><div class="offcanvas-header"><h5 class="offcanvas-title"><i class="bi bi-bell me-2"></i>{% trans 'Notifications' %}</h5><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body" id="notificationBody"><div class="text-center text-secondary py-5"><div class="spinner-border spinner-border-sm me-2"></div>{% trans 'Loading notifications…' %}</div></div></div>
+<script>
+  (()=>{const sidebar=document.getElementById('portalSidebar'),toggle=document.getElementById('sidebarToggle');if(!sidebar||!toggle)return;const apply=v=>sidebar.classList.toggle('collapsed',v);apply(localStorage.getItem('alyusr-sidebar')==='collapsed');toggle.addEventListener('click',()=>{const v=!sidebar.classList.contains('collapsed');apply(v);localStorage.setItem('alyusr-sidebar',v?'collapsed':'expanded')})})();
+</script>
+{% endblock %}

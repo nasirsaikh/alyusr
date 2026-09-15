@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<body style="margin:0;padding:0;background:#f4f7f5;font-family:Arial,Helvetica,sans-serif;color:#17352b">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4f7f5;padding:24px 0">
+<tr><td align="center">
+<table role="presentation" width="760" cellspacing="0" cellpadding="0" border="0" style="width:760px;max-width:760px;background:#ffffff;border-collapse:collapse;border:1px solid #dfe9e3">
+<tr><td style="background:#0f5f43;padding:26px 30px;color:#ffffff">
+  <div style="font-size:24px;font-weight:700">Alyusr Quotation Dashboard</div>
+  <div style="font-size:13px;color:#d7eee4;margin-top:6px">{{ organization.name }} · Generated {{ generated_at|date:'d M Y H:i' }}</div>
+</td></tr>
+<tr><td style="padding:24px 30px">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+<td width="25%" style="padding:6px"><div style="border:1px solid #dfe9e3;border-radius:10px;padding:16px"><div style="font-size:12px;color:#6c7d75">Active Quotations</div><div style="font-size:28px;font-weight:700;color:#0f5f43">{{ active_quote_count }}</div></div></td>
+<td width="25%" style="padding:6px"><div style="border:1px solid #dfe9e3;border-radius:10px;padding:16px"><div style="font-size:12px;color:#6c7d75">Renewals</div><div style="font-size:28px;font-weight:700;color:#0f5f43">{{ renewal_quote_count }}</div></div></td>
+<td width="25%" style="padding:6px"><div style="border:1px solid #dfe9e3;border-radius:10px;padding:16px"><div style="font-size:12px;color:#6c7d75">Awarded</div><div style="font-size:28px;font-weight:700;color:#0f5f43">{{ awarded_count }}</div></div></td>
+<td width="25%" style="padding:6px"><div style="border:1px solid #f0d8d8;border-radius:10px;padding:16px"><div style="font-size:12px;color:#8b6b6b">Market Overdue</div><div style="font-size:28px;font-weight:700;color:#b42318">{{ market_overdue_count }}</div></div></td>
+</tr></table>
+
+<div style="font-size:18px;font-weight:700;margin:26px 0 10px">Upcoming Renewals · Next 60 Days</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;font-size:13px">
+<tr style="background:#edf6f1"><th align="left" style="padding:10px;border:1px solid #dfe9e3">Client</th><th align="left" style="padding:10px;border:1px solid #dfe9e3">Product</th><th align="left" style="padding:10px;border:1px solid #dfe9e3">Risk / Scheme</th><th align="left" style="padding:10px;border:1px solid #dfe9e3">Renewal Date</th><th align="left" style="padding:10px;border:1px solid #dfe9e3">Current Policy</th></tr>
+{% for cp in upcoming_renewals %}<tr><td style="padding:9px;border:1px solid #e5ece8">{{ cp.client.name }}</td><td style="padding:9px;border:1px solid #e5ece8">{{ cp.product.name_en }}</td><td style="padding:9px;border:1px solid #e5ece8">{{ cp.reference_name|default:'—' }}</td><td style="padding:9px;border:1px solid #e5ece8">{{ cp.next_renewal_date|date:'d M Y' }}</td><td style="padding:9px;border:1px solid #e5ece8">{% if cp.current_policy %}{{ cp.current_policy.policy_number }}{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5" style="padding:14px;border:1px solid #e5ece8;color:#6c7d75">No renewals due in the next 60 days.</td></tr>{% endfor %}
+</table>
+
+<div style="font-size:18px;font-weight:700;margin:26px 0 10px">Recent Quotation Activity</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;font-size:13px">
+<tr style="background:#edf6f1"><th align="left" style="padding:10px;border:1px solid #dfe9e3">Reference</th><th align="left" style="padding:10px;border:1px solid #dfe9e3">Client</th><th align="left" style="padding:10px;border:1px solid #dfe9e3">Product</th><th align="left" style="padding:10px;border:1px solid #dfe9e3">Status</th><th align="left" style="padding:10px;border:1px solid #dfe9e3">Winner</th></tr>
+{% for q in recent_quotes %}<tr><td style="padding:9px;border:1px solid #e5ece8">{{ q.reference }}</td><td style="padding:9px;border:1px solid #e5ece8">{{ q.client_name }}</td><td style="padding:9px;border:1px solid #e5ece8">{% if q.client_product %}{{ q.client_product.product.name_en }}{% else %}{{ q.line_of_business }}{% endif %}</td><td style="padding:9px;border:1px solid #e5ece8">{{ q.get_status_display }}</td><td style="padding:9px;border:1px solid #e5ece8">{% if q.selected_quote %}{{ q.selected_quote.carrier.name }}{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5" style="padding:14px;border:1px solid #e5ece8;color:#6c7d75">No quotation activity available.</td></tr>{% endfor %}
+</table>
+
+<div style="font-size:18px;font-weight:700;margin:26px 0 10px">Insurer Participation</div>
+<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>{% for row in participant_summary %}<td style="padding:0 12px 8px 0"><span style="display:inline-block;background:#edf6f1;color:#0f5f43;border-radius:20px;padding:7px 12px;font-size:12px">{{ row.status|title }}: <strong>{{ row.total }}</strong></span></td>{% empty %}<td style="color:#6c7d75">No participant activity.</td>{% endfor %}</tr></table>
+
+<div style="margin-top:28px;padding-top:16px;border-top:1px solid #e5ece8;font-size:11px;color:#7b8a83">This dashboard was generated automatically by the Alyusr task engine. Open the Alyusr portal for live quotation, ticket and renewal details.</div>
+</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>

@@ -25,5 +25,6 @@ jobs:
           python manage.py migrate --noinput
           python manage.py check
           python manage.py cms check
+          python manage.py collectstatic --noinput --clear
           python manage.py seed_demo --password "CI-Demo-Only-2026!"
           python manage.py test
