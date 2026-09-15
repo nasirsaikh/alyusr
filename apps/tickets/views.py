@@ -9,7 +9,7 @@ from django.views.decorators.http import require_POST
 from apps.common.utils import notify, record_audit
 from apps.forms_engine.services import visible_schema_for_user
 from apps.organizations.models import Membership, Role, SupportGroup
-from .models import Category, Ticket, TicketActivity, TicketAttachment, TicketComment, validate_attachment
+from .models import Category, Ticket, TicketActivity, TicketApproval, TicketAttachment, TicketComment, validate_attachment
 from .services import create_ticket, masked_dynamic_data, prepare_dynamic_data, takeover_ticket
 
 
@@ -21,6 +21,20 @@ def _can_manage_ticket(user, ticket):
         is_active=True,
         role__in=[Role.ADMIN, Role.PROJECT_MANAGER, Role.SUPPORT_AGENT],
     ).exists() or ticket.assigned_users.filter(pk=user.pk).exists() or ticket.assigned_groups.filter(members=user).exists()
+
+
+def _can_decide_approval(user, approval):
+    if user.is_superuser:
+        return True
+    if approval.approver_user_id == user.pk:
+        return True
+    if approval.approver_group_id and approval.approver_group.members.filter(pk=user.pk).exists():
+        return True
+    return user.organization_memberships.filter(
+        organization=approval.ticket.organization,
+        is_active=True,
+        role__in=[Role.ADMIN, Role.PROJECT_MANAGER],
+    ).exists()
 
 
 def _assignment_context(ticket):
@@ -103,6 +117,33 @@ def ticket_detail(request, pk):
                 return render(request, "tickets/_comments.html", {"ticket": refreshed})
             return redirect("tickets:detail", pk=ticket.pk)
 
+        if action == "approval":
+            approval = get_object_or_404(TicketApproval.objects.select_related("ticket", "approver_user", "approver_group"), pk=request.POST.get("approval"), ticket=ticket)
+            if not _can_decide_approval(request.user, approval):
+                return HttpResponseForbidden("You are not an approver for this level.")
+            decision = request.POST.get("decision")
+            if approval.status != TicketApproval.Status.PENDING or decision not in {TicketApproval.Status.APPROVED, TicketApproval.Status.REJECTED}:
+                messages.error(request, "This approval action is no longer available.")
+                return redirect("tickets:detail", pk=ticket.pk)
+            lower_pending = ticket.approvals.filter(level__lt=approval.level).exclude(status=TicketApproval.Status.APPROVED).exists()
+            if lower_pending:
+                messages.error(request, "Earlier approval levels must be approved first.")
+                return redirect("tickets:detail", pk=ticket.pk)
+            approval.status = decision
+            approval.decided_at = timezone.now()
+            approval.note = request.POST.get("note", "").strip()
+            approval.save(update_fields=["status", "decided_at", "note", "updated_at"])
+            TicketActivity.objects.create(ticket=ticket, actor=request.user, action=f"approval.{decision}", summary=f"Approval level {approval.level} {decision}", metadata={"approval_id": str(approval.pk)})
+            if decision == TicketApproval.Status.REJECTED:
+                ticket.status = Ticket.Status.PENDING
+                ticket.save(update_fields=["status", "updated_at"])
+            elif not ticket.approvals.exclude(status=TicketApproval.Status.APPROVED).exists() and ticket.status == Ticket.Status.APPROVAL:
+                ticket.status = Ticket.Status.IN_PROGRESS
+                ticket.save(update_fields=["status", "updated_at"])
+            notify(ticket.requester, f"Approval update: {ticket.reference}", f"Level {approval.level}: {approval.get_status_display()}", url=f"/portal/tickets/{ticket.pk}/")
+            record_audit(actor=request.user, action=f"ticket.approval.{decision}", obj=ticket, summary=f"Approval level {approval.level}", request=request, organization_id=ticket.organization_id)
+            return redirect("tickets:detail", pk=ticket.pk)
+
         if not can_manage:
             return HttpResponseForbidden("You do not have permission to manage this ticket.")
 
@@ -113,6 +154,14 @@ def ticket_detail(request, pk):
                 messages.error(request, "Invalid ticket status.")
             else:
                 old_status = ticket.status
+                if old_status in {Ticket.Status.RESOLVED, Ticket.Status.CLOSED} and new_status not in {Ticket.Status.RESOLVED, Ticket.Status.CLOSED}:
+                    closed_at = ticket.closed_at or ticket.resolved_at
+                    if closed_at and timezone.now() > closed_at + timezone.timedelta(days=ticket.category.reopen_window_days):
+                        messages.error(request, f"This ticket can only be reopened within {ticket.category.reopen_window_days} days.")
+                        return redirect("tickets:detail", pk=ticket.pk)
+                if new_status in {Ticket.Status.RESOLVED, Ticket.Status.CLOSED} and ticket.approvals.filter(status=TicketApproval.Status.PENDING).exists():
+                    messages.error(request, "Pending approval levels must be completed before resolution/closure.")
+                    return redirect("tickets:detail", pk=ticket.pk)
                 ticket.status = new_status
                 now = timezone.now()
                 if new_status == Ticket.Status.RESOLVED and not ticket.resolved_at:
@@ -154,11 +203,13 @@ def ticket_detail(request, pk):
 
         return redirect("tickets:detail", pk=ticket.pk)
 
+    approvals = list(ticket.approvals.all())
     context = {
         "ticket": ticket,
         "dynamic_data": masked_dynamic_data(ticket, request.user),
         "can_manage": can_manage,
         "status_choices": Ticket.Status.choices,
+        "approval_actions": {approval.pk: _can_decide_approval(request.user, approval) and approval.status == TicketApproval.Status.PENDING for approval in approvals},
     }
     if can_manage:
         context.update(_assignment_context(ticket))
