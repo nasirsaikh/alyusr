@@ -1,0 +1,17 @@
+Django==6.1.1
+django-cms==5.1.2
+django-allauth[socialaccount]==65.19.3
+mssql-django==1.8.0
+django-sekizai>=4.1,<5
+django-treebeard>=4.7,<5
+djangocms-simple-admin-style==2.0.2
+djangocms-text==1.0.0
+djangocms-frontend==2.5.1
+django-environ>=0.12,<1
+whitenoise>=6.9,<7
+bleach>=6.2,<7
+jsonschema>=4.25,<5
+croniter>=6,<7
+openpyxl>=3.1,<4
+reportlab>=4.4,<5
+Pillow>=11,<13
