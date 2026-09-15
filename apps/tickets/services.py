@@ -1,9 +1,11 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from apps.common.utils import mask_sensitive, notify, record_audit
 from apps.forms_engine.models import FormSubmission
 from apps.forms_engine.services import validate_submission, visible_schema_for_user
-from .models import Ticket, TicketActivity, TicketSLAEvent
+from apps.organizations.models import SupportGroup
+from .models import Ticket, TicketActivity, TicketApproval, TicketSLAEvent
 
 
 def prepare_dynamic_data(form_version, user, organization, post_data):
@@ -26,6 +28,35 @@ def prepare_dynamic_data(form_version, user, organization, post_data):
                 data[key] = post_data.get(f"field__{key}", "")
     valid, errors = validate_submission(schema, data)
     return data, errors, schema
+
+
+def _create_approvals(ticket, category, organization):
+    User = get_user_model()
+    created = []
+    for index, config in enumerate(category.approval_levels or [], start=1):
+        if not isinstance(config, dict):
+            continue
+        approver_user = None
+        approver_group = None
+        if config.get("user_id"):
+            approver_user = User.objects.filter(pk=config["user_id"]).first()
+        if config.get("group_id"):
+            approver_group = SupportGroup.objects.filter(pk=config["group_id"], organization=organization, is_active=True).first()
+        if not approver_user and not approver_group:
+            continue
+        approval = TicketApproval.objects.create(
+            ticket=ticket,
+            level=int(config.get("level") or index),
+            approver_user=approver_user,
+            approver_group=approver_group,
+        )
+        created.append(approval)
+        if approver_user:
+            notify(approver_user, f"Approval required: {ticket.reference}", ticket.subject, url=f"/portal/tickets/{ticket.pk}/")
+        if approver_group:
+            for member in approver_group.members.all():
+                notify(member, f"Group approval required: {ticket.reference}", ticket.subject, url=f"/portal/tickets/{ticket.pk}/")
+    return created
 
 
 @transaction.atomic
@@ -74,7 +105,8 @@ def create_ticket(
             notify(member, f"Ticket assigned: {ticket.reference}", ticket.subject, url=f"/portal/tickets/{ticket.pk}/")
     if form_version:
         FormSubmission.objects.create(form_version=form_version, submitted_by=user, organization_id=str(organization.pk), data=dynamic_data or {}, is_valid=True)
-    TicketActivity.objects.create(ticket=ticket, actor=user, action="created", summary="Ticket created", metadata={"work_type": work_type, "origin": origin})
+    approvals = _create_approvals(ticket, category, organization)
+    TicketActivity.objects.create(ticket=ticket, actor=user, action="created", summary="Ticket created", metadata={"work_type": work_type, "origin": origin, "approval_levels": len(approvals)})
     record_audit(actor=user, action="ticket.created", obj=ticket, summary=ticket.subject, request=request, organization_id=organization.pk)
     return ticket
 
