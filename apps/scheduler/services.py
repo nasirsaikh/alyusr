@@ -55,6 +55,23 @@ def _generate_quote(task, scheduled_for, renewal=False):
         raise ValueError("Quotation-generating tasks require client_product.")
     client_product = task.client_product
     client = client_product.client
+
+    if renewal:
+        if not client_product.next_renewal_date:
+            return None, None, "Client product has no next renewal date."
+        trigger_date = client_product.next_renewal_date - timezone.timedelta(days=client_product.renewal_lead_days)
+        if timezone.localdate() < trigger_date:
+            return None, None, f"Renewal is not due yet. Trigger date is {trigger_date:%Y-%m-%d}."
+        terminal = [QuoteRequest.Status.ISSUED, QuoteRequest.Status.LOST, QuoteRequest.Status.EXPIRED, QuoteRequest.Status.CANCELLED]
+        existing_quote = QuoteRequest.objects.filter(
+            organization=task.organization,
+            client_product=client_product,
+            request_type=QuoteRequest.RequestType.RENEWAL,
+            renewal_of_policy=client_product.current_policy,
+        ).exclude(status__in=terminal).select_related("ticket").order_by("-created_at").first()
+        if existing_quote:
+            return existing_quote.ticket, existing_quote, f"Existing renewal quotation {existing_quote.reference} reused."
+
     ticket = _generate_ticket(task, scheduled_for, work_type=Ticket.WorkType.RENEWAL if renewal else Ticket.WorkType.QUOTATION, origin=Ticket.Origin.RENEWAL if renewal else Ticket.Origin.TASK, subject=(task.payload or {}).get("subject") or f"{'Renewal' if renewal else 'Quotation'} - {client.name} - {client_product.product.name_en}")
     quote, _ = QuoteRequest.objects.get_or_create(ticket=ticket, defaults={"organization": task.organization, "requester": _task_requester(task), "client": client, "client_product": client_product, "renewal_of_policy": client_product.current_policy, "request_type": QuoteRequest.RequestType.RENEWAL if renewal else QuoteRequest.RequestType.NEW, "client_name": client.name, "client_email": client.email, "client_phone": client.phone, "line_of_business": client_product.product.name_en, "status": QuoteRequest.Status.DRAFT, "market_due_at": (task.payload or {}).get("market_due_at"), "dynamic_data": (task.payload or {}).get("dynamic_data", {})})
     for carrier in task.quote_carriers.filter(is_active=True):
@@ -62,7 +79,7 @@ def _generate_quote(task, scheduled_for, renewal=False):
     task.last_generated_ticket = ticket
     task.last_generated_quote = quote
     task.save(update_fields=["last_generated_ticket", "last_generated_quote", "updated_at"])
-    return ticket, quote
+    return ticket, quote, f"Generated {'renewal ' if renewal else ''}quotation {quote.reference} under ticket {ticket.reference}."
 
 
 def _execute_allowlisted_callable(task):
@@ -102,15 +119,17 @@ def execute_task(task, scheduled_for=None, attempt=1):
             task.save(update_fields=["last_generated_ticket", "updated_at"])
             output = f"Generated ticket {ticket.reference}."
         elif task.task_type == ScheduledTask.TaskType.QUOTATION:
-            ticket, quote = _generate_quote(task, scheduled_for, renewal=False)
+            ticket, quote, output = _generate_quote(task, scheduled_for, renewal=False)
             run.generated_ticket = ticket
             run.generated_quote = quote
-            output = f"Generated quotation {quote.reference} under ticket {ticket.reference}."
         elif task.task_type == ScheduledTask.TaskType.RENEWAL:
-            ticket, quote = _generate_quote(task, scheduled_for, renewal=True)
+            ticket, quote, output = _generate_quote(task, scheduled_for, renewal=True)
             run.generated_ticket = ticket
             run.generated_quote = quote
-            output = f"Generated renewal quotation {quote.reference} under ticket {ticket.reference}."
+            if ticket and quote:
+                task.last_generated_ticket = ticket
+                task.last_generated_quote = quote
+                task.save(update_fields=["last_generated_ticket", "last_generated_quote", "updated_at"])
         elif task.task_type == ScheduledTask.TaskType.REPORT and (task.payload or {}).get("report_type") == "quotation_dashboard":
             from apps.quotations.services import send_quotation_dashboard
             output = send_quotation_dashboard(task=task, payload=task.payload or {})
