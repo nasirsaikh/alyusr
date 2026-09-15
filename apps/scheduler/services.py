@@ -34,7 +34,6 @@ def _task_requester(task):
 def _generate_ticket(task, scheduled_for, *, work_type="task", origin="task", subject=None):
     from apps.tickets.models import Ticket
     from apps.tickets.services import create_ticket
-
     if not task.organization_id or not task.ticket_category_id:
         raise ValueError("Ticket-generating tasks require organization and ticket_category.")
     source_reference = f"TASK:{task.pk}:{scheduled_for.isoformat()}"
@@ -45,63 +44,35 @@ def _generate_ticket(task, scheduled_for, *, work_type="task", origin="task", su
     subject = subject or (task.payload or {}).get("subject") or task.name
     description = (task.payload or {}).get("description", "")
     priority = (task.payload or {}).get("priority", Ticket.Priority.NORMAL)
-    return create_ticket(
-        user=_task_requester(task),
-        organization=task.organization,
-        category=task.ticket_category,
-        subject=subject,
-        description=description,
-        priority=priority,
-        dynamic_data=(task.payload or {}).get("dynamic_data", {}),
-        work_type=work_type,
-        origin=origin,
-        client=client,
-        client_product=task.client_product,
-        source_reference=source_reference,
-        renewal_due_on=task.client_product.next_renewal_date if task.client_product_id else None,
-    )
+    return create_ticket(user=_task_requester(task), organization=task.organization, category=task.ticket_category, subject=subject, description=description, priority=priority, dynamic_data=(task.payload or {}).get("dynamic_data", {}), work_type=work_type, origin=origin, client=client, client_product=task.client_product, source_reference=source_reference, renewal_due_on=task.client_product.next_renewal_date if task.client_product_id else None)
 
 
 @transaction.atomic
 def _generate_quote(task, scheduled_for, renewal=False):
     from apps.quotations.models import QuoteParticipant, QuoteRequest
     from apps.tickets.models import Ticket
-
     if not task.client_product_id:
         raise ValueError("Quotation-generating tasks require client_product.")
     client_product = task.client_product
     client = client_product.client
-    ticket = _generate_ticket(
-        task,
-        scheduled_for,
-        work_type=Ticket.WorkType.RENEWAL if renewal else Ticket.WorkType.QUOTATION,
-        origin=Ticket.Origin.RENEWAL if renewal else Ticket.Origin.TASK,
-        subject=(task.payload or {}).get("subject") or f"{'Renewal' if renewal else 'Quotation'} - {client.name} - {client_product.product.name_en}",
-    )
-    quote, _ = QuoteRequest.objects.get_or_create(
-        ticket=ticket,
-        defaults={
-            "organization": task.organization,
-            "requester": _task_requester(task),
-            "client": client,
-            "client_product": client_product,
-            "renewal_of_policy": client_product.current_policy,
-            "request_type": QuoteRequest.RequestType.RENEWAL if renewal else QuoteRequest.RequestType.NEW,
-            "client_name": client.name,
-            "client_email": client.email,
-            "client_phone": client.phone,
-            "line_of_business": client_product.product.name_en,
-            "status": QuoteRequest.Status.DRAFT,
-            "market_due_at": (task.payload or {}).get("market_due_at"),
-            "dynamic_data": (task.payload or {}).get("dynamic_data", {}),
-        },
-    )
+    ticket = _generate_ticket(task, scheduled_for, work_type=Ticket.WorkType.RENEWAL if renewal else Ticket.WorkType.QUOTATION, origin=Ticket.Origin.RENEWAL if renewal else Ticket.Origin.TASK, subject=(task.payload or {}).get("subject") or f"{'Renewal' if renewal else 'Quotation'} - {client.name} - {client_product.product.name_en}")
+    quote, _ = QuoteRequest.objects.get_or_create(ticket=ticket, defaults={"organization": task.organization, "requester": _task_requester(task), "client": client, "client_product": client_product, "renewal_of_policy": client_product.current_policy, "request_type": QuoteRequest.RequestType.RENEWAL if renewal else QuoteRequest.RequestType.NEW, "client_name": client.name, "client_email": client.email, "client_phone": client.phone, "line_of_business": client_product.product.name_en, "status": QuoteRequest.Status.DRAFT, "market_due_at": (task.payload or {}).get("market_due_at"), "dynamic_data": (task.payload or {}).get("dynamic_data", {})})
     for carrier in task.quote_carriers.filter(is_active=True):
         QuoteParticipant.objects.get_or_create(quote_request=quote, carrier=carrier)
     task.last_generated_ticket = ticket
     task.last_generated_quote = quote
     task.save(update_fields=["last_generated_ticket", "last_generated_quote", "updated_at"])
     return ticket, quote
+
+
+def _execute_allowlisted_callable(task):
+    path = task.callable_path.strip()
+    if not path:
+        raise ValueError("This task type requires an allowlisted callable_path.")
+    if not any(path.startswith(p + ".") or path == p for p in settings.ALYUSR_TASK_CALLABLE_ALLOWLIST):
+        raise PermissionError(f"Callable {path!r} is not allowlisted.")
+    module, name = path.rsplit(".", 1)
+    return str(getattr(importlib.import_module(module), name)(task=task, payload=task.payload or {}) or "")
 
 
 def execute_task(task, scheduled_for=None, attempt=1):
@@ -140,12 +111,11 @@ def execute_task(task, scheduled_for=None, attempt=1):
             run.generated_ticket = ticket
             run.generated_quote = quote
             output = f"Generated renewal quotation {quote.reference} under ticket {ticket.reference}."
+        elif task.task_type == ScheduledTask.TaskType.REPORT and (task.payload or {}).get("report_type") == "quotation_dashboard":
+            from apps.quotations.services import send_quotation_dashboard
+            output = send_quotation_dashboard(task=task, payload=task.payload or {})
         else:
-            path = task.callable_path.strip()
-            if not any(path.startswith(p + ".") or path == p for p in settings.ALYUSR_TASK_CALLABLE_ALLOWLIST):
-                raise PermissionError(f"Callable {path!r} is not allowlisted.")
-            module, name = path.rsplit(".", 1)
-            output = str(getattr(importlib.import_module(module), name)(task=task, payload=task.payload or {}) or "")
+            output = _execute_allowlisted_callable(task)
         run.status = TaskRun.Status.SUCCESS
         run.output = output
     except Exception as exc:
