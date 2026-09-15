@@ -1,1 +1,55 @@
-{% extends 'portal/base.html' %}{% block page_title %}Quotations{% endblock %}{% block portal_content %}<div class="card"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>Reference</th><th>Client</th><th>Line</th><th>Status</th><th>Carrier quotes</th></tr></thead><tbody>{% for q in quotes %}<tr><td>{{ q.reference }}</td><td>{{ q.client_name }}</td><td>{{ q.line_of_business }}</td><td>{{ q.get_status_display }}</td><td>{% for c in q.carrier_quotes.all %}<div>{{ c.carrier.name }} — {{ c.premium }} {{ c.currency }}</div>{% empty %}Awaiting quotes{% endfor %}</td></tr>{% endfor %}</tbody></table></div></div>{% endblock %}
+{% extends 'portal/base.html' %}
+{% load i18n %}
+{% block page_title %}{% trans 'Quotations' %}{% endblock %}
+{% block portal_content %}
+<div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-end gap-3 mb-4">
+  <div>
+    <h1 class="h3 fw-bold mb-1">{% trans 'Quotation & Renewal Pipeline' %}</h1>
+    <p class="text-secondary mb-0">{% trans 'Track client products, market participants, quotations received, award decisions and renewal progress.' %}</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'portal:dashboard' %}" class="btn btn-outline-secondary"><i class="bi bi-grid me-1"></i>{% trans 'Dashboard' %}</a>
+    <a href="{% url 'tickets:create' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>{% trans 'New Service Request' %}</a>
+  </div>
+</div>
+
+<div class="portal-card p-3 mb-4">
+  <form method="get" class="row g-2 align-items-end">
+    <div class="col-lg-5"><label class="form-label small text-secondary">{% trans 'Search' %}</label><div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span><input type="search" name="q" value="{{ filters.q }}" class="form-control" placeholder="{% trans 'Reference, client, product…' %}"></div></div>
+    <div class="col-md-4 col-lg-3"><label class="form-label small text-secondary">{% trans 'Request type' %}</label><select name="type" class="form-select"><option value="">{% trans 'All types' %}</option>{% for value,label in type_choices %}<option value="{{ value }}" {% if filters.type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-md-4 col-lg-3"><label class="form-label small text-secondary">{% trans 'Status' %}</label><select name="status" class="form-select"><option value="">{% trans 'All statuses' %}</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-md-4 col-lg-1 d-grid"><button class="btn btn-primary" type="submit"><i class="bi bi-funnel"></i></button></div>
+  </form>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-xl-3"><div class="portal-card p-3 h-100"><small class="text-secondary">{% trans 'Visible requests' %}</small><div class="h3 fw-bold mb-0">{{ quotes|length }}</div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="portal-card p-3 h-100"><small class="text-secondary">{% trans 'Renewal workflow' %}</small><div class="d-flex align-items-center gap-2 mt-2"><span class="icon-box"><i class="bi bi-arrow-repeat"></i></span><span class="small text-secondary">{% trans 'Linked to client products and policies' %}</span></div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="portal-card p-3 h-100"><small class="text-secondary">{% trans 'Market placement' %}</small><div class="d-flex align-items-center gap-2 mt-2"><span class="icon-box"><i class="bi bi-buildings"></i></span><span class="small text-secondary">{% trans 'Invited / quoted / declined tracked' %}</span></div></div></div>
+  <div class="col-sm-6 col-xl-3"><div class="portal-card p-3 h-100"><small class="text-secondary">{% trans 'Award control' %}</small><div class="d-flex align-items-center gap-2 mt-2"><span class="icon-box"><i class="bi bi-trophy"></i></span><span class="small text-secondary">{% trans 'Selected insurer retained with audit' %}</span></div></div></div>
+</div>
+
+<div class="portal-card overflow-hidden">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead><tr><th>{% trans 'Reference' %}</th><th>{% trans 'Client / Product' %}</th><th>{% trans 'Type' %}</th><th>{% trans 'Market' %}</th><th>{% trans 'Quotes' %}</th><th>{% trans 'Status' %}</th><th>{% trans 'Winner' %}</th><th></th></tr></thead>
+      <tbody>
+      {% for q in quotes %}
+        <tr>
+          <td><a href="{% url 'quotations:detail' q.pk %}" class="fw-bold text-decoration-none">{{ q.reference }}</a>{% if q.ticket %}<div class="small text-secondary"><i class="bi bi-ticket-detailed me-1"></i>{{ q.ticket.reference }}</div>{% endif %}</td>
+          <td><div class="fw-semibold">{{ q.client_name }}</div><div class="small text-secondary">{% if q.client_product %}{{ q.client_product.product.name_en }}{% if q.client_product.reference_name %} · {{ q.client_product.reference_name }}{% endif %}{% else %}{{ q.line_of_business }}{% endif %}</div></td>
+          <td><span class="badge rounded-pill bg-primary-subtle text-primary">{{ q.get_request_type_display }}</span></td>
+          <td><div class="d-flex flex-wrap gap-1">{% for p in q.participants.all %}<span class="badge text-bg-light border" title="{{ p.get_status_display }}">{{ p.carrier.name }}</span>{% empty %}<span class="text-secondary small">{% trans 'Not marketed' %}</span>{% endfor %}</div></td>
+          <td>{% if q.carrier_quotes.all %}<div class="fw-semibold">{{ q.carrier_quotes.all|length }}</div><small class="text-secondary">{% trans 'received' %}</small>{% else %}<span class="text-secondary small">{% trans 'Awaiting' %}</span>{% endif %}</td>
+          <td><span class="badge {% if q.status == 'awarded' or q.status == 'bound' or q.status == 'issued' %}text-bg-success{% elif q.status == 'lost' or q.status == 'cancelled' or q.status == 'expired' %}text-bg-secondary{% else %}text-bg-warning{% endif %}">{{ q.get_status_display }}</span></td>
+          <td>{% if q.selected_quote %}<div class="fw-semibold text-success"><i class="bi bi-trophy-fill me-1"></i>{{ q.selected_quote.carrier.name }}</div><small class="text-secondary">{{ q.selected_quote.premium }} {{ q.selected_quote.currency }}</small>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+          <td class="text-end"><a href="{% url 'quotations:detail' q.pk %}" class="btn btn-sm btn-outline-primary">{% trans 'Open' %}</a></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-center py-5"><i class="bi bi-file-earmark-bar-graph fs-1 text-secondary"></i><div class="h5 mt-3">{% trans 'No quotation requests found' %}</div><p class="text-secondary mb-0">{% trans 'Quotation requests can be created manually or automatically from renewal/task workflows.' %}</p></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
