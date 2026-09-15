@@ -13,6 +13,7 @@ class ClientAdmin(admin.ModelAdmin):
 class InsuranceProductAdmin(admin.ModelAdmin):
     list_display = ("name_en", "code", "category", "organization", "default_renewal_lead_days", "is_active")
     list_filter = ("organization", "category", "is_active")
+    search_fields = ("name_en", "name_ar", "code", "category")
     prepopulated_fields = {"code": ("name_en",)}
 
 
